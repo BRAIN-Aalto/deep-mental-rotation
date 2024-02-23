@@ -2,18 +2,18 @@ import argparse
 import logging
 import os
 from pathlib import Path
+import json
 import time
 from typing import Callable, Union, Tuple, Optional
-from functools import partial
+
 
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import torch
 from torch import nn
-from torchvision import transforms, utils
+from torchvision import transforms
 import wandb
 
 from models.neural_renderer import load_model
@@ -260,13 +260,23 @@ def run_bayesian_optimization():
         return -1 * mse(rendered, target)
 
 
-    # same
+    # load params to set up the prior distribution
+    with open(
+        "prior.json",
+        "r",
+        encoding="utf-8"
+    ) as writer:
+        params = json.load(writer)
+    
+    points, mean, cov = np.array(params["points"]), params["mean"], np.array(params["cov"])
+
+  
     boptim = BayesianOptimizer(
         obj_func=objective_function,
-        search_space=LinearGridSpace(random_state=None), # LogGridSpace(start=-180, end=180, size=50),
+        search_space=LinearGridSpace(start=-180, end=180, size=181, random_state=None),
         surrogate=GaussianProcessRegressor(
-            mean=MeanFunction(mean_value=-0.0332),
-            kernel=CustomKernel(file="kernel.npy", points=np.linspace(-180, 180, 200)),
+            mean=MeanFunction(mean=mean),
+            kernel=CustomKernel(cov=cov, points=points),
             random_state=None
         ),
         acquisition=AcquisitionFunction(eps=0.0001, kind="ei")
@@ -274,16 +284,16 @@ def run_bayesian_optimization():
 
     stopping_criterion = SearchStoppingCriterion(kind="sampling", threshold=args.stop_threshold)
 
-    # rotation_cost = lambda rotate_by: 1 - 0.75 * abs(rotate_by) / 180 # optional
+    rotation_cost = lambda rotate_by: 1 - 0.75 * abs(rotate_by) / 180 # optional
 
     for step in range(1, args.iters+1):
-        phi_delta, loss_value, ei = boptim.step(cost_func=None, return_acq=True)
+        phi_delta, loss_value, ei = boptim.step(cost_func=rotation_cost, return_acq=True)
 
         log_step()
 
         boptim.log({"x": phi_delta, "y": loss_value}, step=step)
 
-        if stopping_criterion(boptim, X=np.linspace(-180, 180, 200).reshape(-1, 1)): break
+        if stopping_criterion(boptim, X=points.reshape(-1, 1)): break
 
     
     if -boptim.history.maximum["Y"] > args.match_threshold:

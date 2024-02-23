@@ -17,11 +17,11 @@ import pandas as pd
 class CustomKernel:
     """
     """
-    def __init__(self, file: str, points: np.ndarray) -> None:
+    def __init__(self, cov: np.ndarray, points: np.ndarray) -> None:
         """
         Load kernel from npy file.
         """
-        self.K = np.load(file) # load pre-computed covariance matrix from a npy file
+        self.K = cov.copy() # load pre-computed covariance matrix from a npy file
         self.points = points # points from which covariance matrix was computed
 
 
@@ -75,10 +75,10 @@ class CustomKernel:
 class MeanFunction:
     """
     """
-    def __init__(self, mean_value: float = 0.) -> None:
+    def __init__(self, mean: float = 0.) -> None:
         """
         """
-        self.mean = mean_value
+        self.mean = mean
 
 
     def __call__(self, X: np.ndarray) -> np.ndarray:
