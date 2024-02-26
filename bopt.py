@@ -385,8 +385,8 @@ class Observations:
         if self.empty:
             return {
                 "step": None,
-                "X": None,
-                "Y": None
+                "X": np.nan,
+                "Y": np.nan
             }
         
 
@@ -427,13 +427,12 @@ class BayesianOptimizer:
     ):
         """
         """
-        if self.history.empty:
+        if current_best is np.nan:
             x_next = self.space.sample(mode="random")
             y_next = self.objective(x_next)
             ei = None
         else:
             X_tries = self.space.sample(mode="fixed")
-            current_best = self.history.maximum["Y"]
 
             ei = self.acq(
                 X=X_tries,
