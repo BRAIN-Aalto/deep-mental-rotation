@@ -421,7 +421,6 @@ class BayesianOptimizer:
 
     def step(
         self,
-        current_best: float,
         cost_func: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         return_acq: bool = False
     ):
