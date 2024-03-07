@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import time
 import json
+from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -112,17 +113,23 @@ def log():
     def plot_loss(loss, ax):
         ax.set_xlim(-185, 185)
         ax.set_xticks(np.arange(-180, 180+60, 60))
-
         ax.plot(anglegrid, loss, color="blue")
-        ax.axhline(best_loss, c="black", linestyle="--")
-        ax.axvline(anglegrid[best], c="black", linestyle="--")
 
 
     figure = plt.figure(figsize=(12, 5))
-    grid = GridSpec(3, 3, figure=figure, hspace=0.7)
+    grid = GridSpec(2, 4, figure=figure, hspace=0.5)
 
-    ax1 = figure.add_subplot(grid[:2, :])
-    plot_loss(loss=list(record["loss"].values()), ax=ax1)
+    ax11 = figure.add_subplot(grid[0, :2])
+
+    ax12 = figure.add_subplot(grid[0, 2:], sharey=ax11)
+    ax12.tick_params(axis="y", labelleft=False)
+
+    for cond, ax in zip(["same", "different"], [ax11, ax12]):
+        plot_loss(loss=list(record["loss"][cond].values()), ax=ax)
+
+        if cond == best_cond:
+            ax.axhline(best_loss, c="black", linestyle="--")
+            ax.axvline(anglegrid[best], c="black", linestyle="--")
 
 
     ax2 = figure.add_subplot(grid[-1, 0])
@@ -139,7 +146,7 @@ def log():
     
     ax4 = figure.add_subplot(grid[-1, 2])
     ax4.axis("off")
-    ax4.set_title(f"matched: phi = {phi_estimated:.2f}", fontsize=10)
+    ax4.set_title(f"matched: phi = {phi_estimated:.2f}", fontsize=10, pad=4.)
 
     matched = transform_and_render(
         repr=repr,
@@ -150,14 +157,15 @@ def log():
             "azimuth_target": torch.tensor(phi_estimated).unsqueeze(dim=-1).to(device),
             "elevation_target": theta_source
         },
+        mirror=False if best_cond == "same" else True
     )
     ax4.imshow(matched.squeeze().cpu().permute(1, 2 ,0))
+
 
     plt.close()
     wandb.log(
         {f"sample {sample_idx+1:04d}: {'same' if label else 'different'}": wandb.Image(figure)}
     )
-
 
     
 # step 5: look for a rotation transformation to match two shapes
@@ -186,7 +194,7 @@ for sample_idx, sample in enumerate(testset):
     
     record = dict.fromkeys(("label", "loss"))
     
-    record["loss"] = {}
+    record["loss"] = defaultdict(dict)
     record["label"] = int(label.item())
 
     def objective_function(rotate_by: float, mirror: bool = False):
@@ -206,19 +214,31 @@ for sample_idx, sample in enumerate(testset):
         return -1 * mse(rendered, target).item()
 
     for angle in anglegrid:
-        record["loss"].update(
+        # first, measure similarity loss (same shape)
+        record["loss"]["same"].update(
             {
                 angle: objective_function(rotate_by=angle, mirror=False)
             }
         )
+        # and then measure difference loss (different shape)
+        record["loss"]["different"].update(
+            {
+                angle: objective_function(rotate_by=angle, mirror=True)
+            }
+        )
 
-    best, best_loss = np.argmax(list(record["loss"].values())), max(list(record["loss"].values()))
+    losses = [max(list(record["loss"]["same"].values())), max(list(record["loss"]["different"].values()))]
+
+    best_cond = "same" if np.argmax([losses]) == 0 else "different"
+
+    best, best_loss = np.argmax(list(record["loss"][best_cond].values())), max(list(record["loss"][best_cond].values()))
     phi_estimated = phi_source.cpu().item() + anglegrid[best]
         
     log()
 
     logger.info(
-        f"mse (best) = {-best_loss:.5f}, \
+        f"prediction: {best_cond}\
+        mse (best) = {-best_loss:.5f}, \
         phi (correct) = {phi_target:.1f}, \
         phi (estimated) = {phi_estimated:.1f}.\n\n"
     )
@@ -227,7 +247,7 @@ for sample_idx, sample in enumerate(testset):
 
 
 with open(
-    "./same-loss-history.json",
+    "./same-different-loss-history.json",
     "w",
     encoding="utf-8"
 ) as writer:
@@ -236,5 +256,5 @@ with open(
 
 
 artifact = wandb.Artifact(name="loss-history", type="data")
-artifact.add_file(local_path="same-loss-history.json")
+artifact.add_file(local_path="same-different-loss-history.json")
 run.log_artifact(artifact)
