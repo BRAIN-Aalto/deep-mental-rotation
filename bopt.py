@@ -6,9 +6,10 @@ from typing import (
     Optional,
     Callable
 )
-
+from copy import copy
 import numpy as np
 from numpy.linalg import inv
+import numpy.ma as ma
 from scipy.stats import norm
 import pandas as pd
 
@@ -21,8 +22,8 @@ class CustomKernel:
         """
         Load kernel from npy file.
         """
-        self.K = cov.copy() # load pre-computed covariance matrix from a npy file
-        self.points = points # points from which covariance matrix was computed
+        self.K = cov.copy()
+        self.points = points
 
 
     def __call__(
@@ -54,13 +55,15 @@ class CustomKernel:
 
         cov = np.zeros((X.shape[0], Y.shape[0]))
 
-        for i, x in enumerate(X):
+        for i, (x, same) in enumerate(zip(X.data, X.mask)):
             # find closest point from points to x
-            x_indx = np.abs(self.points - x.item()).argmin()
+            slc = slice(0, int(len(self.points) / 2)) if same else slice(int(len(self.points) / 2), None)
+            x_indx = np.abs(self.points[slc] - x.item()).argmin() + slc.start
 
-            for j, y in enumerate(Y):
+            for j, (y, same) in enumerate(zip(Y.data, Y.mask)):
                 # find closest point from points to y
-                y_indx = np.abs(self.points - y.item()).argmin()
+                slc = slice(0, int(len(self.points) / 2)) if same else slice(int(len(self.points) / 2), None)
+                y_indx = np.abs(self.points[slc] - y.item()).argmin() + slc.start
 
                 cov[i, j] = self.K[x_indx, y_indx]
 
@@ -84,12 +87,12 @@ class MeanFunction:
     def __call__(self, X: np.ndarray) -> np.ndarray:
         """
         """
-        X = np.atleast_2d(X)
-        return np.full_like(X, self.mean)
+        X = np.atleast_2d(X.data)
+        return np.full_like(X.data, self.mean).astype(float)
 
     
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(mean_value={self.mean})"
+        return f"{self.__class__.__name__}(mean={self.mean})"
 
 
 
@@ -132,7 +135,7 @@ class GaussianProcessRegressor:
 
         cov = K_ts - (K_tt @ inv(K_tn) @ K_tt.T)
         
-        return mu, cov
+        return mu.astype(float), cov.astype(float)
     
 
     def predict(
@@ -204,7 +207,8 @@ class LinearGridSpace:
         """
         """
         if mode == "random": # sample a random point from a grid of points
-            return self.rng.choice(self.points).reshape(-1, 1) 
+            # return self.rng.choice(self.points).reshape(-1, 1)
+            return np.zeros((1, 1))
         elif mode == "fixed": # return a full grid of points
             return self.points.reshape(-1, 1)
         else:
@@ -322,8 +326,10 @@ class AcquisitionFunction:
 class Sample(TypedDict):
     """
     """
+    guess: str
     x: float
     y: float
+    
 
 
 Observation = Dict[int, Sample] 
@@ -365,7 +371,9 @@ class Observations:
     @property
     def X(self):
         try:
-            return self.data["x"].to_numpy().reshape(-1, 1)
+            array = self.data["x"].to_numpy().reshape(-1, 1)
+            mask = self.data["guess"].map({"same": 1, "different": 0}).to_numpy().reshape(-1, 1)
+            return ma.array(data=array, mask=mask)
         except KeyError:
             return None
     
@@ -385,15 +393,17 @@ class Observations:
         if self.empty:
             return {
                 "step": None,
+                "guess": None,
                 "X": np.nan,
-                "Y": np.nan
+                "Y": np.nan,
             }
         
 
         index = np.nanargmax(self.Y)
         return {
             "step": index + 1,
-            "X": self.X[index].item(),
+            "guess": "same" if self.X.mask[index].item() else "different",
+            "X": self.X.data[index].item(),
             "Y": self.Y[index].item()
         }
 
@@ -421,18 +431,24 @@ class BayesianOptimizer:
 
     def step(
         self,
-        current_best: float,
         cost_func: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         return_acq: bool = False
     ):
         """
         """
-        if current_best is np.nan:
-            x_next = self.space.sample(mode="random")
-            y_next = self.objective(x_next)
-            ei = None
+        points = self.space.sample(mode="fixed")
+        data = np.stack([points, points]).reshape(-1, 1)
+        mask = np.vstack([np.ones_like(points), np.zeros_like(points)])
+
+        X_tries = ma.array(data, mask=mask)
+
+        if self.history.empty:
+            guess = "same"
+            x_next = ma.array([[0.]], mask=[[1.]])
+            y_next = self.objective(x_next, mirror=False if guess == "same" else True)
+            ei = cost_func(X_tries)
         else:
-            X_tries = self.space.sample(mode="fixed")
+            current_best = self.history.maximum["Y"]
 
             ei = self.acq(
                 X=X_tries,
@@ -447,22 +463,25 @@ class BayesianOptimizer:
 
             max_idx = np.nanargmax(ei)
 
+            guess = "same" if max_idx < 181 else "different"
             x_next = X_tries[max_idx]
-            y_next = self.objective(x_next)
+            y_next = self.objective(x_next, mirror=False if guess == "same" else True)
 
 
         if return_acq:
             return (
+                guess,
                 np.clip(x_next.item(), *self.space.bounds),
-                y_next.item(),
+                y_next,
                 ei
             )
-
         
         return (
+            guess,
             np.clip(x_next.item(), *self.space.bounds),
-            y_next.item(),
+            y_next,
         )
+
 
 
     def log(
@@ -490,51 +509,50 @@ class SearchStoppingCriterion:
         self.threshold = threshold
 
 
-    def __call__(self, optimizer: BayesianOptimizer, X: np.ndarray) -> bool:
+    def __call__(self, optim: BayesianOptimizer, y_best: float, X: np.ndarray) -> bool:
         if self.kind == "sampling":
-            samples = optimizer.surrogate.sample(
-                X,
-                X_train=optimizer.history.X,
-                Y_train=optimizer.history.Y,
-                n_samples=100
-            )
-            if_stop = np.sum(np.isclose(np.max(samples, axis=1), optimizer.history.maximum['Y'])) / 100 > self.threshold
+            samples = []
+
+            for opt in optim:
+                samples.append(
+                    opt.surrogate.sample(
+                        X,
+                        X_train=opt.history.X,
+                        Y_train=opt.history.Y,
+                        n_samples=100
+                    )
+                )
+
+            samples = np.row_stack(samples)
+            # if_stop = np.sum(np.isclose(np.max(samples, axis=1), y_best)) / len(samples) > self.threshold
+            if_stop = np.sum(np.max(samples, axis=1) < y_best) / len(samples) >= self.threshold
 
         elif self.kind == "pi":
             poi = AcquisitionFunction(eps=0.0001, kind="pi")
 
             pi = poi(
                 X=X,
-                y_best=optimizer.history.maximum["Y"],
-                surrogate=optimizer.surrogate,
-                X_train=optimizer.history.X,
-                Y_train=optimizer.history.Y
+                y_best=optim.history.maximum["Y"],
+                surrogate=optim.surrogate,
+                X_train=optim.history.X,
+                Y_train=optim.history.Y
             )
 
             if_stop = not np.any(pi > self.threshold)
 
         elif self.kind == "ucb":
-            mean, std = optimizer.surrogate.predict(X, optimizer.history.X, optimizer.history.Y, return_std=True)
+            mean, std = optim.surrogate.predict(X, optim.history.X, optim.history.Y, return_std=True)
             uncertainty = 1.96 * std # 95% confidence interval
 
             ucb = (mean + uncertainty).ravel()
 
-            if_stop = np.isclose(np.max(ucb), optimizer.history.maximum["Y"])
+            if_stop = np.isclose(np.max(ucb), optim.history.maximum["Y"])
 
         else:
             raise ValueError(
                 f'''Error: {self.kind} is not defined! \
                     Accepted arguments: "ucb", "pi", "sampling".'''
             )
-
+     
         return if_stop
-
-
-
-
-
-
-
-
-
 

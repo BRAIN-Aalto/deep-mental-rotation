@@ -98,6 +98,8 @@ device = torch.device(
     else "cpu"
 )
 
+rng = np.random.default_rng(seed=args.seed)
+
 # step 1: load mental-rotation model
 model = load_model(args.ckpt_path).to(device)
 model.eval()
@@ -143,93 +145,103 @@ def run_bayesian_optimization(seed: int = 12345):
     def log_step(plot_acq: bool = True):
         """
         """
-        figure = plt.figure(figsize=(12, 5))
-        grid = GridSpec(2, 5, figure=figure, hspace=0.3)
+        # figure = plt.figure(figsize=(12, 9))
+        figure = plt.figure(figsize=(12, 6))
+        grid = GridSpec(2, 5, figure=figure, hspace=0.5)
 
 
-        def plot_GP(optim, y_best, ax):
+        def plot_GP(optim, ax):
             """
             """
-            ax.set_xlim(-180 - 5, 180 + 5)
-            ax.set_xticks(np.linspace(-180, 180, 9))
+            # ticks = np.linspace(0, 2*180, 5)
+            # ticklabels = list(map(str, np.concatenate([np.linspace(-180, 180, 3, dtype=int), np.linspace(-180, 180, 3, dtype=int)[1:]])))
+            ticks = np.linspace(0, 2*180, 17)
+            ticklabels = list(map(str, np.concatenate([np.linspace(-180, 180, 9, dtype=int), np.linspace(-180, 180, 9, dtype=int)[1:]])))
+            ax.set_xticks(ticks, labels=ticklabels)
+            ax.xaxis.set_tick_params(labelsize=10) # 32
+            ax.set_xlabel(r"$\Delta$$\theta$", fontsize=16) # 34
 
-            X_test = np.linspace(-180, 180, 200).reshape(-1, 1)
+            # ax.set_yticks([])
+            # ax.set_ylabel("Loss", fontsize=22)
+
+            ax.set_title("Gaussian Process", fontsize=18, y=1.02) # 40
+
+            mask = np.hstack([np.ones(int(len(points) / 2)), np.zeros(int(len(points) / 2))]).reshape(-1, 1)
+            X_test = ma.array(points.reshape(-1, 1), mask=mask)
 
             mean, std = optim.surrogate.predict(X_test, optim.history.X, optim.history.Y, return_std=True)
             uncertainty = 1.96 * std # 95% confidence interval
-            samples = optim.surrogate.sample(
-                X_test,
-                X_train=optim.history.X,
-                Y_train=optim.history.Y,
-                n_samples=5
-            )
+            # samples = optim.surrogate.sample(
+            #     X_test,
+            #     X_train=optim.history.X,
+            #     Y_train=optim.history.Y,
+            #     n_samples=5
+            # )
             
             # plot mean function
-            ax.plot(X_test.ravel(), mean.ravel())
+            grid = np.arange(len(points))
+            ax.plot(grid, mean.ravel())
             # plot uncertainty area
-            ax.fill_between(X_test.ravel(), (mean + uncertainty).ravel(), (mean - uncertainty).ravel(), alpha=0.1)
+            ax.fill_between(grid, (mean + uncertainty).ravel(), (mean - uncertainty).ravel(), alpha=0.1)
 
             # plot sampled point
-            if optim is boptim: ax.axvline(rotate_by, c="green", linestyle="--")
+            idx = int((rotate_by - (-180)) / 2)
+            start = 0 if guess == "same" else 181
+            ax.axvline(start + idx, c="green", linestyle="--")
 
             # plot training points
             if not optim.history.empty:
-                ax.plot(
-                    optim.history.X.ravel(),
-                    optim.history.Y.ravel(), 
-                    "kX",
-                    markersize=5,
-                    markeredgewidth=0.3
-                )
+                for x, y, same in zip(optim.history.X.data.ravel(), optim.history.Y.ravel(), optim.history.X.mask.ravel()):
+                    idx = int((x - (-180)) / 2)
+                    start = 0 if same else 181
+                    plt.scatter(start + idx, y, marker="X", s=35., c="black")
 
                 # plot the current best loss value
-                ax.axhline(y_best, c="black", linestyle="--")
+                ax.axhline(optim.history.maximum["Y"], c="black", linestyle="--")
 
-                for sample in samples:
-                    ax.plot(X_test, sample, lw=0.5, ls='--')
+                # for sample in samples:
+                #     ax.plot(grid, sample, lw=0.5, ls='--')
 
 
         ### Top plot: surrogate function (GP) ###
-        ax11 = figure.add_subplot(grid[0, :2])
-
-        ax12 = figure.add_subplot(grid[0, 2:4], sharey=ax11)
-        ax12.tick_params(axis="y", labelleft=False)
-
-        for optim, ax in zip([sameoptim, diffoptim], [ax11, ax12]):
-            plot_GP(optim=optim, y_best=loss_best, ax=ax)
-
+        ax1 = figure.add_subplot(grid[0, :-1])
+        plot_GP(optim, ax=ax1)
 
 
 
         ## Bottom plot: acquisition function ###
-        ax21 = figure.add_subplot(grid[1, :2])
-
-        ax22 = figure.add_subplot(grid[1, 2:4], sharey=ax21)
-        ax22.tick_params(axis="y", labelleft=False)
+        ax2 = figure.add_subplot(grid[1, :-1])
 
         if plot_acq:
+            if acq is not None:
+                # ticks = np.linspace(0, 2*180, 5)
+                # ticklabels = list(map(str, np.concatenate([np.linspace(-180, 180, 3, dtype=int), np.linspace(-180, 180, 3, dtype=int)[1:]])))
+                ticks = np.linspace(0, 2*180, 17)
+                ticklabels = list(map(str, np.concatenate([np.linspace(-180, 180, 9, dtype=int), np.linspace(-180, 180, 9, dtype=int)[1:]])))
+                ax2.set_xticks(ticks, labels=ticklabels)
+                ax2.xaxis.set_tick_params(labelsize=10) # 32
+                ax2.set_xlabel(r"$\Delta$$\theta$", fontsize=16) # 34
 
-            X_tries = boptim.space.sample(mode="fixed")
+                # ax2.set_yticks([])
+                # ax2.set_ylabel("Acquisition\nfunction", fontsize=22)
 
-            if acqs[0] is not None:
+                ax2.set_title("Acquisition function", fontsize=18, y=1.02) # 40
+    
+                ax2.plot(
+                    np.arange(len(points)),
+                    acq.ravel(),
+                    c="red",
+                )
 
-                for optim, acq, ax in zip([sameoptim, diffoptim], acqs, [ax21, ax22]):
-                    ax.set_xlim(-180 - 5, 180 + 5)
-                    ax.set_xticks(np.linspace(-180, 180, 9))
-
-                    ax.plot(
-                        X_tries,
-                        acq.ravel(),
-                        c="red",
-                    )
-
-                    if optim is boptim: ax.axvline(rotate_by, c="green", linestyle="--")
+                idx = int((rotate_by - (-180)) / 2)
+                start = 0 if guess == "same" else 181
+                ax2.axvline(start + idx, c="green", linestyle="--")
 
 
         # Top-left plot: target image ###
         ax3 = figure.add_subplot(grid[0, -1])
         ax3.axis("off")
-        ax3.set_title(f"phi = {phi_target:.2f}", fontsize=10)
+        ax3.set_title(f"phi = {phi_target:.2f}", fontsize=14)
 
         ax3.imshow(target.squeeze().cpu().permute(1, 2 ,0))
 
@@ -249,14 +261,11 @@ def run_bayesian_optimization(seed: int = 12345):
                 "azimuth_target": phi_estimated,
                 "elevation_target": theta_source
             },
-            mirror=boptim.objective.keywords["mirror"]
+            mirror=False if guess == "same" else True
         )
         ax4.imshow(rendered.squeeze().cpu().permute(1, 2 ,0))
-        ax4.set_title(f"phi = {phi_estimated.squeeze().cpu():.2f}", fontsize=10)
+        ax4.set_title(f"phi = {phi_estimated.squeeze().cpu():.2f}", fontsize=14)
         
-
-
-
         plt.close()
         wandb.log(
             {f"BO (sample {sample_idx:03d}: {'same' if label else 'different'})": wandb.Image(figure)}
@@ -270,19 +279,18 @@ def run_bayesian_optimization(seed: int = 12345):
             rotation_params={
                 "azimuth_source": phi_source,
                 "elevation_source": theta_source,
-                "azimuth_target": phi_source + torch.Tensor([rotate_by]).to(device),
+                "azimuth_target": phi_source + torch.Tensor(rotate_by.data).to(device),
                 "elevation_target": theta_source
             },
             mirror=mirror
         )
 
-        # compute l2-distance between target (img1) and rendered (rotated img2)
         return -1 * mse(rendered, target)
     
     
     # load params to set up the prior distribution
     with open(
-        "prior.json",
+        "prior-x.json",
         "r",
         encoding="utf-8"
     ) as writer:
@@ -290,21 +298,8 @@ def run_bayesian_optimization(seed: int = 12345):
     
     points, mean, cov = np.array(params["points"]), params["mean"], np.array(params["cov"])
 
-    # same
-    sameoptim = BayesianOptimizer(
-        obj_func=partial(objective_function, mirror=False),
-        search_space=LinearGridSpace(start=-180, end=180, size=181, random_state=None),
-        surrogate=GaussianProcessRegressor(
-            mean=MeanFunction(mean=mean),
-            kernel=CustomKernel(cov=cov, points=points),
-            random_state=None
-        ),
-        acquisition=AcquisitionFunction(eps=0.0001, kind="ei")
-    )
-
-    # different
-    diffoptim = BayesianOptimizer(
-        obj_func=partial(objective_function, mirror=True),
+    optim = BayesianOptimizer(
+        obj_func=objective_function,
         search_space=LinearGridSpace(start=-180, end=180, size=181, random_state=None),
         surrogate=GaussianProcessRegressor(
             mean=MeanFunction(mean=mean),
@@ -315,53 +310,23 @@ def run_bayesian_optimization(seed: int = 12345):
     )
 
     # stopping_criterion = SearchStoppingCriterion(kind="sampling", threshold=args.stop_threshold)
-
-    rotation_cost = lambda rotate_by: 1 - 0.75 * abs(rotate_by) / 180 # optional
-
-    def step():
-        """
-        """
-        res = defaultdict(list)
-
-        optims = [sameoptim, diffoptim]
-        current_best = max(sameoptim.history.maximum["Y"], diffoptim.history.maximum["Y"])
-
-        for optim in optims:
-            x_next, y_next, acq = optim.step(
-                current_best,
-                cost_func=rotation_cost,
-                return_acq=True
-            )
-            res["x"]   += [x_next]
-            res["y"]   += [y_next]
-            res["acq"] += [acq]
-
-        try:
-            best = np.nanargmax(np.nanmax(res["acq"], axis=1, keepdims=True))
-            return res["x"][best], res["y"][best], current_best, res["acq"], optims[best]
-        
-        except Exception:
-            return res["x"][0], res["y"][0], current_best, res["acq"], optims[0] # always measure similarity loss first
     
+    def rotation_cost(X):
+        cost = 1 - 0.75 * abs(X.data) / 180
+        cost[~X.mask] -= 0.1 
 
+        return cost
+        
 
     for i in range(1, args.iters+1):
-        rotate_by, loss_value, loss_best, acqs, boptim = step()
+        guess, rotate_by, loss_value, acq = optim.step(cost_func=rotation_cost, return_acq=True)
 
-        # log_step()
-        
-        boptim.log({"x": rotate_by, "y": loss_value}, step=i)
+        if DEBUG: log_step()
+        optim.log({"guess": guess, "x": rotate_by, "y": loss_value}, step=i)
 
-        ### stopping criterion 1: loss function sampling
-        # if stopping_criterion(
-        #     optim=[sameoptim, diffoptim],
-        #     y_best=loss_best,
-        #     X=np.linspace(-180, 180, 200).reshape(-1, 1)
-        # ): break
 
-        ### stopping criterion 2: global loss threshold for match / mismatch
         if -loss_value < args.match_threshold:
-            match = 1 if boptim is sameoptim else 0
+            match = 1 if guess == "same" else 0
             break
 
     else:
@@ -376,13 +341,13 @@ def run_bayesian_optimization(seed: int = 12345):
         "steps": i,
     }    
 
-
-
 # step 5: look for a rotation angle to match two shapes
 table = []
 
-for sample_idx, sample in enumerate(testset):
+DEBUG = False
 
+
+for sample_idx, sample in enumerate(testset):
     img1, img2, label = sample
 
     logger.info(f"Image pair {sample_idx+1:04d} ({'same' if label else 'different'}): same-different-shape task initiated.")
@@ -404,6 +369,7 @@ for sample_idx, sample in enumerate(testset):
 
 
     res = run_bayesian_optimization()
+
 
     matched = transform_and_render(
         repr=repr,
@@ -435,7 +401,9 @@ for sample_idx, sample in enumerate(testset):
         phi (correct) = {phi_target:.2f}, \
         phi (estimated) = {res["phi_estimated"]:.2f}.\n\n'''
     )
-    break
+
+    if DEBUG: break
+
 
 
 data = pd.DataFrame(table)
