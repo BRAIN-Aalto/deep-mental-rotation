@@ -2,20 +2,28 @@ import argparse
 import logging
 import os
 from pathlib import Path
+from collections import defaultdict
 import time
 import json
-from collections import defaultdict
 
 import numpy as np
+from numpy import linalg as LA
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-import torch
-from torchvision import transforms
-from torchmetrics.regression import MeanSquaredError
 import wandb
 
 from models.neural_renderer import load_model
-from misc.dataloaders import SameDifferentShapeDataset
+from metzler_renderer.geometry import (
+    Plane,
+    ShapeString,
+    MetzlerShape
+)
+from metzler_renderer.renderer import (
+    Camera,
+    Renderer,
+    Object3D
+)
+from metzler_renderer import utils
 
 import autoroot
 
@@ -38,11 +46,6 @@ logger.addHandler(stream_handler)
 # set up argparser
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--ckpt-path",
-    type=lambda p: Path(p).absolute(),
-    help="path to model's checkpoint"
-)
-parser.add_argument(
     "--data-file-path",
     type=lambda p: Path(p).absolute(),
     help="path to file with meta data about images"
@@ -64,47 +67,73 @@ run = wandb.init(
 
 ROOT = os.getenv("PROJECT_ROOT")
 
-device = torch.device(
-    "cuda" if torch.cuda.is_available()
-    else "cpu"
-)
 
-# step 1: load mental-rotation model
-model = load_model(args.ckpt_path).to(device)
-model.eval()
-
-# step 2: load same-different-shape dataset (validation set)
-testset = SameDifferentShapeDataset(
-    ROOT,
+# step 2: load data
+with open(
     args.data_file_path,
-    transforms=transforms.Compose([
-        transforms.ToTensor()
-    ])
+    "r",
+    encoding="utf-8"
+) as reader:
+    data = json.load(reader)
+
+
+# create the camera object
+camera = Camera()
+# create the renderer object
+renderer = Renderer(
+    imgsize=(128, 128),
+    dpi=100,
+    bgcolor="white",
+    format="png"
 )
 
-# step 3: define similarity metric
-mse = MeanSquaredError()
 
-
-def transform_and_render(
-    repr,
-    model,
-    rotation_params,
-    mirror = False
+def rotate(
+    object: Object3D,
+    theta: float,
+    phi: float
 ):
     """
     """
-    if mirror:
-        transformed = model.mirror_and_rotate(repr, rotation_params)
-    else:
-        transformed = model.rotate_from_source_to_target(
-            repr,
-            **rotation_params
-        )
+    camera.setSphericalPosition(
+        r=25,
+        theta=theta,
+        phi=phi
+    )
+    view = camera.setLookAtMatrix()
 
-    rendered = model.render(transformed)
+    model = object.setModelMatrix()
 
-    return rendered.detach()
+    mv = view @ model
+
+    return (mv @ utils.homogenize(object.vertices))[:-1]
+
+
+def skeleton(vertices):
+    """
+    """
+    CUBES = 10
+
+    centroids = np.zeros((CUBES, 3))
+
+    for i in range(CUBES):
+        centroids[i, :] = np.mean(vertices[:, 8*i:8*i + 8], axis=1)
+
+    return centroids
+
+
+def render(object: Object3D, theta: float, phi: float):
+    """
+    """
+    camera.setSphericalPosition(
+        r=25,
+        theta=theta,
+        phi=phi
+    )
+
+    renderer.render(object, camera)
+
+    return renderer.save_figure_to_numpy()
 
 
 def log():
@@ -134,84 +163,100 @@ def log():
 
     ax2 = figure.add_subplot(grid[-1, 0])
     ax2.axis("off")
-    ax2.set_title(f"source: phi = {phi_source.cpu().item():.2f}", fontsize=10)
-    ax2.imshow(source.squeeze().cpu().permute(1, 2 ,0))
+    ax2.set_title(f"source: phi = {phi_source:.2f}", fontsize=10)
+
+
+    ax2.imshow(
+        render(source, theta=theta_source, phi=phi_source)
+    )
 
 
     ax3 = figure.add_subplot(grid[-1, 1])
     ax3.axis("off")
     ax3.set_title(f"target: phi = {phi_target:.2f}", fontsize=10)
-    ax3.imshow(target.squeeze().cpu().permute(1, 2 ,0))
+
+    ax3.imshow(
+        render(target, theta=theta_source, phi=phi_target)
+    )
+
 
     
     ax4 = figure.add_subplot(grid[-1, 2])
     ax4.axis("off")
     ax4.set_title(f"matched: phi = {phi_estimated:.2f}", fontsize=10, pad=4.)
 
-    matched = transform_and_render(
-        repr=repr,
-        model=model,
-        rotation_params={
-            "azimuth_source": phi_source,
-            "elevation_source": theta_source,
-            "azimuth_target": torch.tensor(phi_estimated).unsqueeze(dim=-1).to(device),
-            "elevation_target": theta_source
-        },
-        mirror=False if best_cond == "same" else True
+    ax4.imshow(
+        render(source, theta=theta_source, phi=phi_estimated)
     )
-    ax4.imshow(matched.squeeze().cpu().permute(1, 2 ,0))
-
 
     plt.close()
     wandb.log(
-        {f"sample {sample_idx+1:04d}: {'same' if label else 'different'}": wandb.Image(figure)}
+        {f"sample {idx+1:04d}: {'same' if label else 'different'}": wandb.Image(figure)}
     )
 
+
+
+object_params = {
+    "facecolor": "white",
+    "edgecolor": "black",
+    "edgewidth": 0.8
+}
     
 # step 5: look for a rotation transformation to match two shapes
 anglegrid = np.linspace(-180, 180, 181) # sampling grid
 
 history = []
 
-for sample_idx, sample in enumerate(testset):
-    img1, img2, label = sample
+for idx, sample in enumerate(data):
 
-    logger.info(f"Image pair {sample_idx+1:04d} ({'same' if label else 'different'}): same-different-shape task initiated.")
+    target = Object3D(
+                shape=MetzlerShape(ShapeString(sample["image_1"]["shape"])),
+                **object_params
+            )
 
-    target = img1.unsqueeze(0).to(device)
-    source = img2.unsqueeze(0).to(device)
+    source = Object3D(
+                shape=MetzlerShape(ShapeString(sample["image_2"]["shape"])),
+                **object_params
+            )
+    
+    label = sample["label"]
 
-    # retrieve camera params used to get source image
-    phi_source = torch.Tensor([testset.dataset[sample_idx]["image_2"]["azimuth"]]).to(device)
-    theta_source = torch.Tensor([testset.dataset[sample_idx]["image_2"]["elevation"]]).to(device)
-    # retrieve camera params used to get target image
-    phi_target = testset.dataset[sample_idx]["image_1"]["azimuth"]
+    phi_source = sample["image_2"]["azimuth"]
 
-    # infer shape representation from source image
-    repr = model.inverse_render(source)
+    theta_source = -sample["image_2"]["elevation"]
+
+    phi_target = sample["image_1"]["azimuth"]
+
 
     logger.info("Looking for a rotation angle to match two shapes ...")
     
     record = dict.fromkeys(("label", "loss"))
     
     record["loss"] = defaultdict(dict)
-    record["label"] = int(label.item())
+    record["label"] = int(label)
+
 
     def objective_function(rotate_by: float, mirror: bool = False):
-        rendered = transform_and_render(
-            repr=repr,
-            model=model,
-            rotation_params={
-                "azimuth_source": phi_source,
-                "elevation_source": theta_source,
-                "azimuth_target": phi_source + torch.Tensor([rotate_by]).to(device),
-                "elevation_target": theta_source
-            },
-            mirror=mirror
-        )
+        """
+        """
+        target_rotated = rotate(target, theta=theta_source, phi=phi_target)
+
+        if mirror:
+            source_mirrored = Object3D(
+                shape=MetzlerShape(ShapeString(sample["image_2"]["shape"]).reflect(over=Plane(2))),
+                **object_params
+            )
+
+            source_rotated = rotate(source_mirrored, theta=theta_source, phi=phi_source + rotate_by)
+        else:
+            source_rotated = rotate(source, theta=theta_source, phi=phi_source + rotate_by)
+        
+        return -LA.norm((skeleton(target_rotated) - skeleton(source_rotated)))
 
 
-        return -1 * mse(rendered, target).item()
+
+
+    logger.info(f"Image pair {idx+1:04d} ({'same' if label else 'different'}): same-different-shape task initiated.")
 
     for angle in anglegrid:
         # first, measure similarity loss (same shape)
@@ -232,8 +277,9 @@ for sample_idx, sample in enumerate(testset):
     best_cond = "same" if np.argmax([losses]) == 0 else "different"
 
     best, best_loss = np.argmax(list(record["loss"][best_cond].values())), max(list(record["loss"][best_cond].values()))
-    phi_estimated = phi_source.cpu().item() + anglegrid[best]
-        
+    phi_estimated = phi_source + anglegrid[best]
+
+
     log()
 
     logger.info(
@@ -246,8 +292,9 @@ for sample_idx, sample in enumerate(testset):
     history.append(record)
 
 
+
 with open(
-    "./same-different-loss-history.json",
+    "./same-different-3D-skeleton-loss-history.json",
     "w",
     encoding="utf-8"
 ) as writer:
@@ -256,5 +303,5 @@ with open(
 
 
 artifact = wandb.Artifact(name="loss-history", type="data")
-artifact.add_file(local_path="same-different-loss-history.json")
+artifact.add_file(local_path="same-different-3D-skeleton-loss-history.json")
 run.log_artifact(artifact)

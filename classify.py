@@ -9,19 +9,27 @@ from functools import partial
 from collections import defaultdict
 
 import numpy as np
+from numpy import linalg as LA
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import torch
-from torchmetrics.regression import MeanSquaredError
-from torchvision import transforms
 import wandb
-
-from models.neural_renderer import load_model
-from misc.dataloaders import SameDifferentShapeDataset
 
 import autoroot
 from bopt import *
+
+from metzler_renderer.geometry import (
+    Plane,
+    ShapeString,
+    MetzlerShape
+)
+from metzler_renderer.renderer import (
+    Camera,
+    Renderer,
+    Object3D
+)
+from metzler_renderer import utils
 
 
 # set up logger
@@ -93,49 +101,76 @@ run = wandb.init(
 
 ROOT = os.getenv("PROJECT_ROOT")
 
-device = torch.device(
-    "cuda" if torch.cuda.is_available()
-    else "cpu"
-)
-
 rng = np.random.default_rng(seed=args.seed)
 
-# step 1: load mental-rotation model
-model = load_model(args.ckpt_path).to(device)
-model.eval()
-
-# step 2: load same-different-shape dataset (test set)
-testset = SameDifferentShapeDataset(
-    ROOT,
+with open(
     args.data_file_path,
-    transforms=transforms.Compose([
-        transforms.ToTensor()
-    ])
+    "r",
+    encoding="utf-8"
+) as reader:
+    testset = json.load(reader)
+
+
+# create the camera object
+camera = Camera()
+# create the renderer object
+renderer = Renderer(
+    imgsize=(128, 128),
+    dpi=100,
+    bgcolor="white",
+    format="png"
 )
 
-# step 3: define similarity metric
-mse = MeanSquaredError()
+object_params = {
+    "facecolor": "white",
+    "edgecolor": "black",
+    "edgewidth": 0.8
+}
 
 
-def transform_and_render(
-    repr,
-    model,
-    rotation_params,
-    mirror = False
-):
+def rotate(object: Object3D, theta: float, phi: float):
     """
     """
-    if mirror:
-        rotated = model.mirror_and_rotate(repr, rotation_params)
-    else:
-        rotated = model.rotate_from_source_to_target(
-            repr,
-            **rotation_params
-        )
+    camera.setSphericalPosition(
+        r=25,
+        theta=theta,
+        phi=phi
+    )
+    view = camera.setLookAtMatrix()
 
-    rendered = model.render(rotated)
+    model = object.setModelMatrix()
 
-    return rendered.detach()
+    mv = view @ model
+
+    return (mv @ utils.homogenize(object.vertices))[:-1]
+
+
+def skeleton(vertices):
+    """
+    """
+    CUBES = 10
+
+    centroids = np.zeros((CUBES, 3))
+
+    for i in range(CUBES):
+        centroids[i, :] = np.mean(vertices[:, 8*i:8*i + 8], axis=1)
+
+    return centroids
+
+
+def render(object: Object3D, theta: float, phi: float):
+    """
+    """
+    camera.setSphericalPosition(
+        r=25,
+        theta=theta,
+        phi=phi
+    )
+
+    renderer.render(object, camera)
+
+    return renderer.save_figure_to_numpy()
+
 
 
 def run_bayesian_optimization(seed: int = 12345):
@@ -243,28 +278,21 @@ def run_bayesian_optimization(seed: int = 12345):
         ax3.axis("off")
         ax3.set_title(f"phi = {phi_target:.2f}", fontsize=14)
 
-        ax3.imshow(target.squeeze().cpu().permute(1, 2 ,0))
+        ax3.imshow(
+            render(target, theta=theta_source, phi=phi_target)
+        )
 
 
         ## Bottom-left plot: rotated image ###
         ax4 = figure.add_subplot(grid[-1, -1])
         ax4.axis("off")
 
+        phi_estimated = phi_source + rotate_by 
 
-        phi_estimated = phi_source + torch.tensor(rotate_by).to(device)
-        rendered = transform_and_render(
-            repr=repr,
-            model=model,
-            rotation_params={
-                "azimuth_source": phi_source,
-                "elevation_source": theta_source,
-                "azimuth_target": phi_estimated,
-                "elevation_target": theta_source
-            },
-            mirror=False if guess == "same" else True
+        ax4.imshow(
+            render(source, theta=theta_source, phi=phi_estimated)
         )
-        ax4.imshow(rendered.squeeze().cpu().permute(1, 2 ,0))
-        ax4.set_title(f"phi = {phi_estimated.squeeze().cpu():.2f}", fontsize=14)
+        ax4.set_title(f"phi = {phi_estimated:.2f}", fontsize=14)
         
         plt.close()
         wandb.log(
@@ -273,24 +301,27 @@ def run_bayesian_optimization(seed: int = 12345):
 
 
     def objective_function(rotate_by: float, mirror: bool = False):
-        rendered = transform_and_render(
-            repr=repr,
-            model=model,
-            rotation_params={
-                "azimuth_source": phi_source,
-                "elevation_source": theta_source,
-                "azimuth_target": phi_source + torch.Tensor(rotate_by.data).to(device),
-                "elevation_target": theta_source
-            },
-            mirror=mirror
-        )
+        """
+        """
+        target_rotated = rotate(target, theta=theta_source, phi=phi_target)
 
-        return -1 * mse(rendered, target)
+        if mirror:
+            source_mirrored = Object3D(
+                shape=MetzlerShape(ShapeString(sample["image_2"]["shape"]).reflect(over=Plane(2))),
+                **object_params
+            )
+
+            source_rotated = rotate(source_mirrored, theta=theta_source, phi=phi_source + rotate_by.data)
+        else:
+            source_rotated = rotate(source, theta=theta_source, phi=phi_source + rotate_by.data)
+        
+        return -LA.norm((skeleton(target_rotated) - skeleton(source_rotated)))
     
     
+
     # load params to set up the prior distribution
     with open(
-        "prior-x.json",
+        "prior-x-3D-skeleton-loss.json",
         "r",
         encoding="utf-8"
     ) as writer:
@@ -316,7 +347,7 @@ def run_bayesian_optimization(seed: int = 12345):
         cost[~X.mask] -= 0.1 
 
         return cost
-        
+
 
     for i in range(1, args.iters+1):
         guess, rotate_by, loss_value, acq = optim.step(cost_func=rotation_cost, return_acq=True)
@@ -335,7 +366,7 @@ def run_bayesian_optimization(seed: int = 12345):
     log_step()
 
     return {
-        "phi_estimated": phi_source.item() + rotate_by,
+        "phi_estimated": phi_source + rotate_by,
         "mse_score": -loss_value,
         "prediction": match,
         "steps": i,
@@ -346,23 +377,27 @@ table = []
 
 DEBUG = False
 
-
 for sample_idx, sample in enumerate(testset):
-    img1, img2, label = sample
+
+    target = Object3D(
+            shape=MetzlerShape(ShapeString(sample["image_1"]["shape"])),
+            **object_params
+        )
+
+    source = Object3D(
+                shape=MetzlerShape(ShapeString(sample["image_2"]["shape"])),
+                **object_params
+            )
+    
+    label = sample["label"]
+
+    phi_source = sample["image_2"]["azimuth"]
+
+    theta_source = -sample["image_2"]["elevation"]
+
+    phi_target = sample["image_1"]["azimuth"]
 
     logger.info(f"Image pair {sample_idx+1:04d} ({'same' if label else 'different'}): same-different-shape task initiated.")
-
-    target = img1.unsqueeze(0).to(device)
-    source = img2.unsqueeze(0).to(device)
-
-    # retrieve camera params used to get source image
-    phi_source = torch.Tensor([testset.dataset[sample_idx]["image_2"]["azimuth"]]).to(device)
-    theta_source = torch.Tensor([testset.dataset[sample_idx]["image_2"]["elevation"]]).to(device)
-    # retrieve camera params used to get target image
-    phi_target = testset.dataset[sample_idx]["image_1"]["azimuth"]
-
-    # infer shape representation from source image
-    repr = model.inverse_render(source)
 
     # run BO to see if we can find a rotation angle (phi) to match source and target images
     logger.info("Looking for a rotation angle to match two shapes ...")
@@ -371,26 +406,17 @@ for sample_idx, sample in enumerate(testset):
     res = run_bayesian_optimization()
 
 
-    matched = transform_and_render(
-        repr=repr,
-        model=model,
-        rotation_params={
-            "azimuth_source": phi_source,
-            "elevation_source": theta_source,
-            "azimuth_target": torch.tensor(res["phi_estimated"]).unsqueeze(dim=-1).to(device),
-            "elevation_target": theta_source
-        },
-    )
+    matched = render(source, theta=theta_source, phi=res["phi_estimated"])
 
     table.append(
         {
-            "source": wandb.Image(source.squeeze().cpu().permute(1, 2, 0).numpy()),
-            "target": wandb.Image(target.squeeze().cpu().permute(1, 2, 0).numpy()),
-            "matched": wandb.Image(matched.squeeze().cpu().permute(1, 2, 0).numpy()),
-            "phi_source": phi_source.squeeze().cpu(),
+            "source": wandb.Image(render(source, theta=theta_source, phi=phi_source)),
+            "target": wandb.Image(render(target, theta=theta_source, phi=phi_target)),
+            "matched": wandb.Image(matched),
+            "phi_source": phi_source,
             "phi_target": phi_target,
             **res,
-            "label": label.item()
+            "label": label
         }
     )
 
