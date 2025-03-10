@@ -1,0 +1,17 @@
+# @package _global_
+
+defaults:
+  - override /data: train
+
+data:
+  num_samples: 1536
+
+name: "same-different-shape-depth-pairs/curriculum-learning"
+
+version: 60
+
+rotation: "depth"
+
+min_angle: 0
+
+max_angle: 60

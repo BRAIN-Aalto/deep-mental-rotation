@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - hydra: default
+  - paths: default
+  - shaperenderer: default
+  - data: null
+  - dataset: null
+
+seed: 12345
+
+

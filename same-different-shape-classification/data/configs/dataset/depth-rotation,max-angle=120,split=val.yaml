@@ -1,0 +1,17 @@
+# @package _global_
+
+defaults:
+  - override /data: val
+
+data:
+  num_samples: 1024
+
+name: "same-different-shape-depth-pairs/curriculum-learning"
+
+version: 120
+
+rotation: "depth"
+
+min_angle: 0
+
+max_angle: 120

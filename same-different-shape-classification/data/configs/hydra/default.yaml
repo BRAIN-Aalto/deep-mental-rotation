@@ -1,0 +1,10 @@
+defaults:
+  - override job_logging: disabled
+
+run:
+  dir: ${paths.output_dir}
+  
+
+output_subdir: null
+
+

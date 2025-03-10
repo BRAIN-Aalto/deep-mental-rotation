@@ -1,0 +1,13 @@
+name: env
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python>=3.12
+  - notebook
+  - pip>=23
+  - pip:
+    - shepard-metzler-shape-renderer
+    - hydra-core

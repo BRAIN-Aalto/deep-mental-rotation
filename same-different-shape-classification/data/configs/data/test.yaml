@@ -1,0 +1,7 @@
+tag: "test"
+
+path_to_shapes: "shape-splits/test.txt"
+
+num_samples: 512
+
+num_classes: 2

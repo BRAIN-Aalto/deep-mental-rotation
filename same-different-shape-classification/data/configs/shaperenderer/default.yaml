@@ -1,0 +1,17 @@
+camera:
+  distance: 25.
+  elevation: None
+  rotation: None
+
+
+renderer:
+  image_size: 128
+  background: white
+  dpi: 100
+  format: png
+
+
+object:
+  facecolor: white
+  edgecolor: black
+  edgewidth: 0.8

@@ -1,0 +1,5 @@
+# path to working directory
+work_dir: ${hydra:runtime.cwd}
+
+# path to output directory (created dynamically by hydra)
+output_dir: ${paths.work_dir}/${name}/v${version}/${data.tag}
