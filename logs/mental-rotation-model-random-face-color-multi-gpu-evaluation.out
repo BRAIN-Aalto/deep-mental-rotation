@@ -1,88 +1,0 @@
-wandb: Currently logged in as: duktig. Use `wandb login --relogin` to force relogin
-wandb: wandb version 0.15.3 is available!  To upgrade, please run:
-wandb:  $ pip install wandb --upgrade
-wandb: Tracking run with wandb version 0.15.2
-wandb: Run data is saved locally in /scratch/work/krylovs1/ml-equivariant-neural-rendering/wandb/run-20230519_105021-6r7oc7cw
-wandb: Run `wandb offline` to turn off syncing.
-wandb: Syncing run run-2023-05-19-10:50:19
-wandb: ⭐️ View project at https://wandb.ai/duktig/metzler-deep-model
-wandb: 🚀 View run at https://wandb.ai/duktig/metzler-deep-model/runs/6r7oc7cw
-wandb: Network error resolved after 0:00:01.398367, resuming normal operation.
-wandb: Network error resolved after 0:00:03.944388, resuming normal operation.
-wandb: Network error resolved after 0:00:03.625018, resuming normal operation.
-wandb: Network error resolved after 0:00:03.561022, resuming normal operation.
-wandb: 429 encountered ({"error":"rate limit exceeded"}), retrying request
-wandb: Network error resolved after 0:00:07.936403, resuming normal operation.
-1/68:             Current - 22.45271,             Mean - 22.45271
-2/68:             Current - 22.47497,             Mean - 22.46384
-3/68:             Current - 20.51799,             Mean - 21.81522
-4/68:             Current - 21.94404,             Mean - 21.84743
-5/68:             Current - 21.65780,             Mean - 21.80950
-6/68:             Current - 22.88587,             Mean - 21.98890
-7/68:             Current - 22.48191,             Mean - 22.05933
-8/68:             Current - 22.30646,             Mean - 22.09022
-9/68:             Current - 22.47719,             Mean - 22.13321
-10/68:             Current - 22.41480,             Mean - 22.16137
-11/68:             Current - 22.94341,             Mean - 22.23247
-12/68:             Current - 21.79030,             Mean - 22.19562
-13/68:             Current - 21.88691,             Mean - 22.17187
-14/68:             Current - 23.57711,             Mean - 22.27225
-15/68:             Current - 22.32792,             Mean - 22.27596
-16/68:             Current - 22.61811,             Mean - 22.29734
-17/68:             Current - 22.13479,             Mean - 22.28778
-18/68:             Current - 22.43915,             Mean - 22.29619
-19/68:             Current - 21.82119,             Mean - 22.27119
-20/68:             Current - 22.99251,             Mean - 22.30726
-21/68:             Current - 22.30022,             Mean - 22.30692
-22/68:             Current - 22.76130,             Mean - 22.32758
-23/68:             Current - 22.43322,             Mean - 22.33217
-24/68:             Current - 22.71955,             Mean - 22.34831
-25/68:             Current - 22.10151,             Mean - 22.33844
-26/68:             Current - 22.51049,             Mean - 22.34505
-27/68:             Current - 21.14956,             Mean - 22.30078
-28/68:             Current - 22.08504,             Mean - 22.29307
-29/68:             Current - 22.82395,             Mean - 22.31138
-30/68:             Current - 22.61356,             Mean - 22.32145
-31/68:             Current - 21.48918,             Mean - 22.29461
-32/68:             Current - 21.93801,             Mean - 22.28346
-33/68:             Current - 22.36096,             Mean - 22.28581
-34/68:             Current - 21.24797,             Mean - 22.25529
-35/68:             Current - 22.14124,             Mean - 22.25203
-36/68:             Current - 22.05348,             Mean - 22.24651
-37/68:             Current - 22.35852,             Mean - 22.24954
-38/68:             Current - 21.95219,             Mean - 22.24171
-39/68:             Current - 22.55585,             Mean - 22.24977
-40/68:             Current - 22.04897,             Mean - 22.24475
-41/68:             Current - 22.25815,             Mean - 22.24508
-42/68:             Current - 21.61955,             Mean - 22.23018
-43/68:             Current - 22.26290,             Mean - 22.23094
-44/68:             Current - 22.02767,             Mean - 22.22632
-45/68:             Current - 21.07803,             Mean - 22.20080
-46/68:             Current - 23.23330,             Mean - 22.22325
-47/68:             Current - 22.57821,             Mean - 22.23080
-48/68:             Current - 22.61952,             Mean - 22.23890
-49/68:             Current - 22.45632,             Mean - 22.24334
-50/68:             Current - 22.17592,             Mean - 22.24199
-51/68:             Current - 22.49127,             Mean - 22.24687
-52/68:             Current - 23.18534,             Mean - 22.26492
-53/68:             Current - 22.53302,             Mean - 22.26998
-54/68:             Current - 22.61255,             Mean - 22.27632
-55/68:             Current - 22.30444,             Mean - 22.27683
-56/68:             Current - 22.70100,             Mean - 22.28441
-57/68:             Current - 22.58308,             Mean - 22.28965
-58/68:             Current - 21.44240,             Mean - 22.27504
-59/68:             Current - 22.79413,             Mean - 22.28384
-60/68:             Current - 22.42465,             Mean - 22.28619
-61/68:             Current - 21.94238,             Mean - 22.28055
-62/68:             Current - 19.67604,             Mean - 22.23854
-63/68:             Current - 22.53476,             Mean - 22.24325
-64/68:             Current - 22.15424,             Mean - 22.24185
-65/68:             Current - 21.66885,             Mean - 22.23304
-66/68:             Current - 21.31059,             Mean - 22.21906
-67/68:             Current - 22.57913,             Mean - 22.22443
-68/68:             Current - 23.21639,             Mean - 22.23902
-Dataset mean PSNR: 22.23903
-wandb: Waiting for W&B process to finish... (success).
-wandb: - 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: \ 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: | 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: / 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: - 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: \ 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: | 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: / 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: - 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: \ 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: | 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: / 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: - 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: \ 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: | 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: / 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: - 127.595 MB of 127.595 MB uploaded (0.000 MB deduped)wandb: 🚀 View run run-2023-05-19-10:50:19 at: https://wandb.ai/duktig/metzler-deep-model/runs/6r7oc7cw
-wandb: Synced 6 W&B file(s), 13600 media file(s), 0 artifact file(s) and 0 other file(s)
-wandb: Find logs at: ./wandb/run-20230519_105021-6r7oc7cw/logs
