@@ -1,0 +1,6 @@
+_target_ : src.models.siamesenet.resnet.ClassificationLinearEvaluator
+
+base_model:
+  _target_: src.models.siamesenet.resnet.ResNetContrastiveLearningNetwork
+
+ckpt_path: ${paths.root_dir}/runs/model=resnet50-cl,dataset=depth-rotation,loss=max-margin-contrastive-loss,seed=12345/2025-01-12T14-15-23/train/ckpts/ckpt-best.pth

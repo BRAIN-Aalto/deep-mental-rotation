@@ -1,0 +1,38 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=experiment-name
+
+defaults:
+  - override /dataset: depth-rotation
+  - override /model: resnet50-cl
+
+
+criterion:
+  _target_: torch.nn.CosineEmbeddingLoss
+  margin: 0.
+
+weight_decay:
+  weight_decay: 0.00002
+  norm_weight_decay: 0.0
+
+optimizer:
+  _partial_: true
+  _target_: torch.optim.SGD
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.00002
+
+
+lr_scheduler:
+  lr_warmup_epochs: 5
+  lr_warmup_decay: 0.01
+
+
+trainer:
+  max_epochs: 300
+  enable_checkpointing: True
+
+
+tags: ["resnet50-cl", "depth-rotation", "max-margin-contrastive-loss"]
+

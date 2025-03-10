@@ -1,0 +1,18 @@
+# to execute this experiment run:
+# python train.py experiment=experiment-name
+
+defaults:
+  - _self_
+  - hydra: default
+  - paths: default
+  - dataset: null
+  - model: null
+  - experiment: null
+
+job_name: "train"
+
+# provide checkpoint path to resume training
+ckpt_path: null
+
+# seed for random number generators in pytorch, numpy and python.random
+seed: 12345

@@ -1,0 +1,3 @@
+_target_: src.models.siamesenet.resnet.ResNet34SiameseNetwork
+
+weights: null

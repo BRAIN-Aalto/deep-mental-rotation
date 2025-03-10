@@ -1,0 +1,27 @@
+name: env
+
+channels:
+  - nvidia
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python>=3.12
+  - numpy
+  - matplotlib
+  - pytorch>=2.0.0
+  - torchvision
+  - pytorch-cuda=11.8
+  - lightning
+  - torchmetrics
+  - torchinfo
+  - jupyter
+  - notebook
+  - wandb
+  - pip>=23
+  - pip: 
+    - autoroot
+    - shepard-metzler-shape-renderer
+    - vit-pytorch
+    - hydra-core

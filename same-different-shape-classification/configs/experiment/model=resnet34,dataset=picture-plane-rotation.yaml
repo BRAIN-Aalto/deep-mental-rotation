@@ -1,0 +1,30 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=experiment-name
+
+defaults:
+  - override /dataset: picture-plane-rotation
+  - override /model: resnet34
+
+criterion: "bce"
+
+optimizer:
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.00002
+  norm_weight_decay: 0.0
+
+
+lr_scheduler:
+  lr_warmup_epochs: 5
+  lr_warmup_decay: 0.01
+
+
+trainer:
+  max_epochs: 400
+  enable_checkpointing: True
+
+
+tags: ["resnet34", "picture-plane-rotation", "bce"]
+

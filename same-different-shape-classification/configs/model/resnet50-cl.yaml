@@ -1,0 +1,5 @@
+_target_: src.models.siamesenet.resnet.ResNetContrastiveLearningNetwork
+
+base_model: "resnet50"
+
+weights: null

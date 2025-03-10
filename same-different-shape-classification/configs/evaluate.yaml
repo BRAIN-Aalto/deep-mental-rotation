@@ -1,0 +1,14 @@
+defaults:
+  - _self_
+  - hydra: default
+  - paths: default
+  - dataset: null
+  - model: null
+  - experiment: null
+
+job_name: "eval"
+
+# provide checkpoint for evaluation
+ckpt_path: ???
+
+seed: 12345
