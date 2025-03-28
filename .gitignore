@@ -1,5 +1,6 @@
 # Environments
 devenv/
+**/env
 
 # Jupyter Notebook
 .ipynb_checkpoints
